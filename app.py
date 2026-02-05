@@ -10,9 +10,9 @@ app = Flask(__name__)
 
 API_URL = 'http://lbs-2026-00.askarov.net:3030/reset/'
 # API_URL = 'http://127.0.0.1:3000/reset'
-API_RUNS = 5
-THRESHOLD_SECONDS = 0.2
-COUNTER_DELAY = 900000
+API_RUNS = 10
+THRESHOLD_SECONDS = 0.3
+COUNTER_DELAY = 10000000
 
 
 def check_payload_true(normal_reponse_time, sql_payload, threshold):
