@@ -22,10 +22,7 @@ def check_payload_true(known_user, sql_payload, threshold):
         baseline_time = measure_response_time(API_URL, known_user)
         retries += 1
         
-        # Safety Valve: If server is permanently slow, break after 5 tries to avoid infinite hang
-        if retries > 10:
-            logger.error("❌ Server is permanently slow. Proceeding with high lag.")
-            break
+
 
     # 2. Measure the Injection Time
     injection_time = measure_response_time(API_URL, sql_payload)
