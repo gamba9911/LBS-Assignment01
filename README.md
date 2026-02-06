@@ -1,4 +1,4 @@
 # Language Based Security
 
-## SQL Injection
-pip install flask requests matplotlib
+## Compiling
+g++ -o attack attack.cpp -lcurl -std=c++11
