@@ -1,0 +1,45 @@
+\usepackage[left=0.8in,right=0.8in,bottom=0.5in,top=0.5in]{geometry}
+\geometry{a4paper}
+\usepackage[parfill]{parskip}    % Activate to begin paragraphs with an empty line rather than an indent
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+%\usepackage{times}
+\usepackage{titling}
+\usepackage[small,compact]{titlesec}
+
+
+% \renewcommand{\familydefault}{\sfdefault}
+
+
+\usepackage{amsmath,amssymb}
+\DeclareGraphicsRule{.tif}{png}{.png}{`convert #1 `dirname #1`/`basename #1 .tif`.png}
+
+
+
+\newcommand\courseName{Language-Based Security}
+\newcommand\courseNameAbbrv{LBS}
+\newcommand\courseYear{2026}
+\newcommand\courseAndYear{\courseNameAbbrv-\courseYear}
+\newcommand\reportKind{Assignment report}
+
+\newcommand\groupNumber[1]{
+  \makeatletter
+  \def\@courseGroupNumber{#1}
+  \makeatother
+}
+
+\pretitle{\begin{flushright} \bfseries  \large \courseAndYear: \reportKind \end{flushright}   \begin{flushleft}
+\bfseries \LARGE}
+\posttitle{\par\end{flushleft}\vskip 0.5em}
+
+\preauthor{
+\begin{flushleft}
+\large \lineskip 0.5em%
+\bfseries
+\makeatletter Group \@courseGroupNumber \\ \makeatother
+\begin{tabular}[t]{@{}l}}
+\postauthor{\end{tabular}\par\end{flushleft}}
+
+\predate{\begin{flushleft}\bfseries \large}
+\postdate{\par\end{flushleft}}
